@@ -1,7 +1,6 @@
-// Глобальные переменные
 let socket;
 let currentUser = null;
-let currentChat = null; // { id, type, name, members, avatar }
+let currentChat = null;
 let allChats = [];
 let allGroups = [];
 let mediaRecorder = null;
@@ -11,12 +10,6 @@ let mediaStream = null;
 let peerConnection = null;
 let localStream = null;
 let remoteStream = null;
-let currentTheme = 'dark';
-
-// E2EE
-let publicKey = null;
-let privateKey = null;
-let recipientPublicKeys = {};
 
 // DOM элементы
 const authContainer = document.getElementById('auth-container');
@@ -44,6 +37,8 @@ const searchInput = document.getElementById('search-users');
 const voiceBtn = document.getElementById('voice-btn');
 const videoMsgBtn = document.getElementById('video-msg-btn');
 const callBtn = document.getElementById('call-btn');
+const attachVideoBtn = document.getElementById('attach-video-btn');
+const videoFileInput = document.getElementById('video-file-input');
 const profileModal = document.getElementById('profile-modal');
 const callModal = document.getElementById('call-modal');
 const endCallBtn = document.getElementById('end-call');
@@ -53,22 +48,6 @@ const chatsTab = document.getElementById('chats-tab');
 const groupsTab = document.getElementById('groups-tab');
 const groupModal = document.getElementById('group-modal');
 const createGroupBtn = document.getElementById('create-group');
-
-// -------------------- i18n --------------------
-async function loadTranslations(lang) {
-    const res = await fetch(`/locales/${lang}.json`);
-    const translations = await res.json();
-    document.querySelectorAll('[data-i18n]').forEach(el => {
-        const key = el.getAttribute('data-i18n');
-        if (translations[key]) el.textContent = translations[key];
-    });
-    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-        const key = el.getAttribute('data-i18n-placeholder');
-        if (translations[key]) el.placeholder = translations[key];
-    });
-}
-const userLang = navigator.language.split('-')[0] || 'en';
-loadTranslations(userLang === 'ru' ? 'ru' : 'en');
 
 // -------------------- Auth --------------------
 loginTab.addEventListener('click', () => {
@@ -85,7 +64,6 @@ registerTab.addEventListener('click', () => {
     registerForm.style.display = 'block';
 });
 
-// Регистрация
 registerForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const username = document.getElementById('reg-username').value.trim();
@@ -100,18 +78,17 @@ registerForm.addEventListener('submit', async (e) => {
         });
         const data = await res.json();
         if (res.ok) {
-            alert('Registration successful! Please login.');
+            alert('Регистрация успешна! Войдите.');
             loginTab.click();
             document.getElementById('login-username').value = username;
         } else {
             regError.textContent = data.error;
         }
     } catch (err) {
-        regError.textContent = 'Connection error';
+        regError.textContent = 'Ошибка соединения';
     }
 });
 
-// Логин
 loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const username = document.getElementById('login-username').value.trim();
@@ -127,16 +104,15 @@ loginForm.addEventListener('submit', async (e) => {
         if (res.ok) {
             currentUser = data;
             localStorage.setItem('mime_user', JSON.stringify(currentUser));
-            await initApp();
+            initApp();
         } else {
             loginError.textContent = data.error;
         }
     } catch (err) {
-        loginError.textContent = 'Connection error';
+        loginError.textContent = 'Ошибка соединения';
     }
 });
 
-// Google login
 document.getElementById('google-login').addEventListener('click', () => {
     window.location.href = '/auth/google';
 });
@@ -150,7 +126,6 @@ if (userParam) {
     window.history.replaceState({}, document.title, '/');
 }
 
-// Выход
 logoutBtn.addEventListener('click', () => {
     localStorage.removeItem('mime_user');
     if (socket) socket.disconnect();
@@ -164,12 +139,9 @@ async function initApp() {
     authContainer.style.display = 'none';
     appContainer.style.display = 'flex';
     updateProfileUI();
-    await initPGP();
-    await connectSocket();
+    connectSocket();
     await loadChats();
     setupSocketListeners();
-    await subscribeToPush();
-    setupThemes();
 }
 
 function updateProfileUI() {
@@ -185,7 +157,6 @@ function updateProfileUI() {
     }
 }
 
-// -------------------- Socket.IO --------------------
 function connectSocket() {
     socket = io();
     socket.on('connect', () => {
@@ -193,14 +164,13 @@ function connectSocket() {
     });
 }
 
-// -------------------- Загрузка чатов --------------------
 async function loadChats() {
     try {
         const res = await fetch(`/users/${currentUser.id}`);
         const users = await res.json();
+        allChats = users.map(u => ({ ...u, type: 'private' }));
         const groupsRes = await fetch('/groups');
         const groups = await groupsRes.json();
-        allChats = users.map(u => ({ ...u, type: 'private' }));
         allGroups = groups;
         renderChatList('private');
     } catch (err) {
@@ -223,7 +193,7 @@ function renderChatList(type) {
         }
         const name = item.displayName || item.name;
         const avatar = item.avatar || '';
-        const status = item.status || (item.online ? 'online' : 'offline');
+        const status = item.status || (item.online ? 'онлайн' : 'офлайн');
         div.innerHTML = `
             <div class="chat-avatar" style="background-image: url(${avatar}); background-size: cover;">
                 ${!avatar ? name[0].toUpperCase() : ''}
@@ -242,7 +212,7 @@ function renderChatList(type) {
 async function openChat(chat, type) {
     currentChat = { ...chat, type };
     chatWithNameSpan.textContent = chat.displayName || chat.name;
-    chatWithStatusSpan.textContent = chat.status || (chat.online ? 'online' : 'offline');
+    chatWithStatusSpan.textContent = chat.status || (chat.online ? 'онлайн' : 'офлайн');
     if (chat.avatar) {
         chatAvatarDiv.style.backgroundImage = `url(${chat.avatar})`;
         chatAvatarDiv.style.backgroundSize = 'cover';
@@ -252,12 +222,10 @@ async function openChat(chat, type) {
         chatAvatarDiv.textContent = (chat.displayName || chat.name)[0].toUpperCase();
     }
     messageInputArea.style.display = 'flex';
-    // Загружаем историю
     let url = type === 'private' ? `/messages/chat/${chat.id}` : `/messages/group/${chat.id}`;
     const res = await fetch(url);
     const messages = await res.json();
     renderMessages(messages);
-    // Активное выделение
     document.querySelectorAll('.chat-item').forEach(el => el.classList.remove('active'));
     const activeItem = Array.from(chatListDiv.children).find(
         el => el.querySelector('.chat-name').textContent === (chat.displayName || chat.name)
@@ -279,8 +247,10 @@ function renderMessages(messages) {
             content = `<audio controls src="${msg.fileUrl || `data:audio/webm;base64,${msg.text}`}"></audio>`;
         } else if (msg.type === 'video_message') {
             content = `<video controls src="${msg.fileUrl || `data:video/webm;base64,${msg.text}`}" width="200"></video>`;
+        } else if (msg.type === 'video') {
+            content = `<video controls src="${msg.fileUrl}" width="250"></video>`;
         } else if (msg.type === 'encrypted') {
-            content = `<div><i>🔒 Encrypted message</i></div>`;
+            content = `<div><i>🔒 Зашифрованное сообщение</i></div>`;
         }
         messageDiv.innerHTML = `${content}<div class="message-time">${time}</div>`;
         messagesContainer.appendChild(messageDiv);
@@ -300,8 +270,10 @@ function addMessageToUI(msg) {
         content = `<audio controls src="${msg.fileUrl || `data:audio/webm;base64,${msg.text}`}"></audio>`;
     } else if (msg.type === 'video_message') {
         content = `<video controls src="${msg.fileUrl || `data:video/webm;base64,${msg.text}`}" width="200"></video>`;
+    } else if (msg.type === 'video') {
+        content = `<video controls src="${msg.fileUrl}" width="250"></video>`;
     } else if (msg.type === 'encrypted') {
-        content = `<div><i>🔒 Encrypted message</i></div>`;
+        content = `<div><i>🔒 Зашифрованное сообщение</i></div>`;
     }
     messageDiv.innerHTML = `${content}<div class="message-time">${time}</div>`;
     messagesContainer.appendChild(messageDiv);
@@ -322,37 +294,26 @@ function escapeHtml(str) {
     });
 }
 
-// -------------------- Отправка сообщений --------------------
-async function sendTextMessage() {
+function sendTextMessage() {
     if (!currentChat) return;
     const text = messageInput.value.trim();
     if (!text) return;
-    let finalText = text;
-    // E2EE для приватных чатов
-    if (currentChat.type === 'private') {
-        const recipientKey = await getRecipientPublicKey(currentChat.id);
-        if (recipientKey) {
-            finalText = await encryptMessage(text, recipientKey);
-        }
-    }
     const data = {
         from: currentUser.id,
         to: currentChat.id,
-        text: finalText,
-        type: currentChat.type === 'private' && recipientPublicKeys[currentChat.id] ? 'encrypted' : 'text'
+        text: text,
+        type: 'text'
     };
     socket.emit('send_message', data);
     messageInput.value = '';
-    // Оптимистичное добавление
-    addMessageToUI({ ...data, timestamp: Date.now(), type: 'text', text });
+    addMessageToUI({ ...data, timestamp: Date.now() });
 }
-
 sendBtn.addEventListener('click', sendTextMessage);
 messageInput.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') sendTextMessage();
 });
 
-// -------------------- Голосовые/видео сообщения --------------------
+// Голосовые/видео сообщения
 async function startRecording(type) {
     if (!currentChat) return;
     try {
@@ -386,7 +347,6 @@ async function startRecording(type) {
         console.error(err);
     }
 }
-
 function stopRecording() {
     if (mediaRecorder && isRecording) {
         mediaRecorder.stop();
@@ -400,82 +360,38 @@ voiceBtn.addEventListener('mouseup', stopRecording);
 videoMsgBtn.addEventListener('mousedown', () => startRecording('video'));
 videoMsgBtn.addEventListener('mouseup', stopRecording);
 
-// -------------------- E2EE --------------------
-async function initPGP() {
-    const storedPrivate = localStorage.getItem('pgp_private');
-    if (storedPrivate) {
-        try {
-            privateKey = await openpgp.decryptKey({
-                privateKey: await openpgp.readPrivateKey({ armoredKey: storedPrivate }),
-                passphrase: currentUser.id
-            });
-        } catch (e) { console.error('Failed to decrypt private key', e); }
-    } else {
-        const { privateKey: priv, publicKey: pub } = await openpgp.generateKey({
-            userIds: [{ name: currentUser.username }],
-            curve: 'ed25519'
-        });
-        privateKey = priv;
-        publicKey = pub;
-        localStorage.setItem('pgp_private', priv.armor());
-        await fetch('/users/keys', {
+// Загрузка видеофайла
+attachVideoBtn.addEventListener('click', () => videoFileInput.click());
+videoFileInput.addEventListener('change', async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    // Размер не проверяем, сервер примет до 8 ГБ
+    const formData = new FormData();
+    formData.append('video', file);
+    try {
+        const res = await fetch('/upload/video', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ publicKey: pub.armor() })
+            body: formData
         });
+        const data = await res.json();
+        if (data.url) {
+            socket.emit('send_video_file', {
+                from: currentUser.id,
+                to: currentChat.id,
+                fileUrl: data.url,
+                duration: data.duration || 0
+            });
+        } else {
+            alert('Ошибка загрузки видео');
+        }
+    } catch (err) {
+        console.error(err);
+        alert('Ошибка соединения');
     }
-}
+    videoFileInput.value = '';
+});
 
-async function getRecipientPublicKey(userId) {
-    if (recipientPublicKeys[userId]) return recipientPublicKeys[userId];
-    const res = await fetch(`/users/${userId}/key`);
-    const data = await res.json();
-    if (data.publicKey) {
-        recipientPublicKeys[userId] = data.publicKey;
-        return data.publicKey;
-    }
-    return null;
-}
-
-async function encryptMessage(text, recipientKeyArmored) {
-    const recipientKey = await openpgp.readKey({ armoredKey: recipientKeyArmored });
-    const encrypted = await openpgp.encrypt({
-        message: await openpgp.createMessage({ text }),
-        encryptionKeys: recipientKey,
-        signingKeys: privateKey
-    });
-    return encrypted;
-}
-
-async function decryptMessage(encryptedText, senderId) {
-    const senderKeyArmored = await getRecipientPublicKey(senderId);
-    if (!senderKeyArmored) return encryptedText;
-    const senderKey = await openpgp.readKey({ armoredKey: senderKeyArmored });
-    const message = await openpgp.readMessage({ armoredMessage: encryptedText });
-    const { data } = await openpgp.decrypt({
-        message,
-        decryptionKeys: privateKey,
-        verificationKeys: senderKey
-    });
-    return data;
-}
-
-// -------------------- Push-уведомления --------------------
-async function subscribeToPush() {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-    const registration = await navigator.serviceWorker.register('/service-worker.js');
-    const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: process.env.VAPID_PUBLIC_KEY
-    });
-    await fetch('/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(subscription)
-    });
-}
-
-// -------------------- Видеозвонки --------------------
+// Видеозвонки
 async function startCall() {
     if (!currentChat) return;
     callModal.style.display = 'flex';
@@ -499,7 +415,6 @@ async function startCall() {
         endCall();
     }
 }
-
 function endCall() {
     if (localStream) localStream.getTracks().forEach(t => t.stop());
     if (peerConnection) peerConnection.close();
@@ -509,7 +424,7 @@ function endCall() {
 endCallBtn.addEventListener('click', endCall);
 callBtn.addEventListener('click', startCall);
 
-// -------------------- Группы --------------------
+// Группы
 chatsTab.addEventListener('click', () => {
     chatsTab.classList.add('active');
     groupsTab.classList.remove('active');
@@ -521,7 +436,6 @@ groupsTab.addEventListener('click', () => {
     renderChatList('group');
 });
 document.getElementById('create-group-btn')?.addEventListener('click', () => {
-    // Заполняем селект пользователями
     const select = document.getElementById('group-members');
     select.innerHTML = '';
     allChats.forEach(u => {
@@ -547,7 +461,7 @@ createGroupBtn.addEventListener('click', async () => {
     }
 });
 
-// -------------------- Профиль --------------------
+// Профиль
 editProfileBtn.addEventListener('click', async () => {
     const res = await fetch(`/users/${currentUser.id}`);
     const user = await res.json();
@@ -581,28 +495,12 @@ document.getElementById('save-profile').addEventListener('click', async () => {
     }
 });
 
-// -------------------- Темы --------------------
-function setupThemes() {
-    const savedTheme = localStorage.getItem('theme') || 'dark';
-    document.body.className = savedTheme;
-}
-function toggleTheme() {
-    currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    document.body.className = currentTheme;
-    localStorage.setItem('theme', currentTheme);
-}
-// Добавить кнопку переключения темы (можно добавить в интерфейс)
-
-// -------------------- Socket обработчики --------------------
+// Socket обработчики
 function setupSocketListeners() {
-    socket.on('new_message', async (msg) => {
+    socket.on('new_message', (msg) => {
         if (currentChat && (msg.from === currentChat.id || msg.to === currentChat.id)) {
-            if (msg.type === 'encrypted' && msg.from !== currentUser.id) {
-                msg.text = await decryptMessage(msg.text, msg.from);
-            }
             addMessageToUI(msg);
         }
-        // Обновить список чатов (последнее сообщение)
         loadChats();
     });
     socket.on('user_status', ({ userId, online }) => {
@@ -610,18 +508,16 @@ function setupSocketListeners() {
         if (user) {
             user.online = online;
             if (currentChat && currentChat.id === userId) {
-                chatWithStatusSpan.textContent = online ? 'online' : 'offline';
+                chatWithStatusSpan.textContent = online ? 'онлайн' : 'офлайн';
             }
             renderChatList(chatsTab.classList.contains('active') ? 'private' : 'group');
         }
     });
     socket.on('incoming_call', async (data) => {
-        if (confirm(`Incoming call from ${data.fromName}. Accept?`)) {
+        if (confirm(`Входящий звонок от ${data.fromName}. Принять?`)) {
             currentChat = allChats.find(c => c.id === data.from);
-            await openChat(currentChat, 'private');
+            if (currentChat) await openChat(currentChat, 'private');
             startCall();
-            // Ответить на звонок
-            // ... (логика ответа в startCall уже есть, но нужно передать offer)
         }
     });
     socket.on('call_answered', (data) => {
@@ -632,17 +528,15 @@ function setupSocketListeners() {
     });
     socket.on('call_ended', () => {
         endCall();
-        alert('Call ended by other party');
+        alert('Звонок завершён');
     });
 }
 
-// Поиск
 searchInput.addEventListener('input', () => {
     const activeTab = chatsTab.classList.contains('active') ? 'private' : 'group';
     renderChatList(activeTab);
 });
 
-// -------------------- Запуск --------------------
 const savedUser = localStorage.getItem('mime_user');
 if (savedUser) {
     currentUser = JSON.parse(savedUser);
