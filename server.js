@@ -9,41 +9,24 @@ const compression = require('compression');
 const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
-const path = require('path');
+const i18next = require('i18next');
+const Backend = require('i18next-fs-backend');
+const middleware = require('i18next-http-middleware');
 
-// Импорт маршрутов
-const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/users');
-const messageRoutes = require('./routes/messages');
-const groupRoutes = require('./routes/groups');
-const adminRoutes = require('./routes/admin');
-const botRoutes = require('./routes/bot');
-const paymentRoutes = require('./routes/payments');
-
-// Импорт middleware
-const upload = require('./middleware/upload');
-
+// Увеличиваем лимиты для больших файлов
 const app = express();
-const server = http.createServer(app);
-const io = socketIo(server, {
-    cors: { origin: '*', methods: ['GET', 'POST'] }
-});
-
-// Логирование ошибок
-process.on('uncaughtException', (err) => {
-    console.error('Uncaught Exception:', err);
-});
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
-// Middleware
-app.use(helmet());
-app.use(cors());
-app.use(compression());
 app.use(express.json({ limit: '8gb' }));
 app.use(express.urlencoded({ limit: '8gb', extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
+
+// Безопасность
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+app.use(cors());
+app.use(compression());
+
+// Статика
+app.use(express.static('public'));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -51,13 +34,13 @@ const limiter = rateLimit({
     max: 100,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { error: 'Too many requests' }
+    message: { error: 'Too many requests, please try again later.' }
 });
 app.use('/api/', limiter);
 
-// Сессии (без Redis для упрощения)
+// Сессии (простая память, без Redis)
 app.use(session({
-    secret: process.env.JWT_SECRET || 'your-secret-key',
+    secret: process.env.JWT_SECRET || 'fallback-secret-change-in-production',
     resave: false,
     saveUninitialized: false,
     cookie: { secure: false, httpOnly: true, maxAge: 1000 * 60 * 60 * 24 * 7 }
@@ -68,15 +51,40 @@ require('./config/passport')(passport);
 app.use(passport.initialize());
 app.use(passport.session());
 
-// Подключение к MongoDB
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/mime', {
+// i18n
+i18next.use(Backend).use(middleware.LanguageDetector).init({
+    fallbackLng: 'en',
+    backend: { loadPath: './public/locales/{{lng}}.json' }
+});
+app.use(middleware.handle(i18next));
+
+// Подключение к MongoDB с обработкой ошибок
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/mime';
+mongoose.connect(MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
-})
-.then(() => console.log('MongoDB connected'))
-.catch(err => console.error('MongoDB connection error:', err));
+    serverSelectionTimeoutMS: 5000
+}).then(() => {
+    console.log('✅ MongoDB connected');
+}).catch(err => {
+    console.error('❌ MongoDB connection error:', err);
+    process.exit(1);
+});
+
+// Подключаем модели
+const User = require('./models/User');
+const Message = require('./models/Message');
+const Chat = require('./models/Chat');
 
 // Маршруты
+const authRoutes = require('./routes/auth');
+const userRoutes = require('./routes/users');
+const messageRoutes = require('./routes/messages');
+const groupRoutes = require('./routes/groups');
+const adminRoutes = require('./routes/admin');
+const botRoutes = require('./routes/bot');
+const paymentRoutes = require('./routes/payments');
+
 app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
 app.use('/messages', messageRoutes);
@@ -85,51 +93,79 @@ app.use('/admin', adminRoutes);
 app.use('/bot', botRoutes);
 app.use('/payments', paymentRoutes);
 
-// Эндпоинт загрузки видео
-app.post('/upload/video', upload.single('video'), (req, res) => {
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    res.json({ url: req.file.path, duration: req.file.duration || 0 });
-});
+// Swagger (опционально)
+const swaggerJsdoc = require('swagger-jsdoc');
+const swaggerUi = require('swagger-ui-express');
+const options = {
+    definition: {
+        openapi: '3.0.0',
+        info: { title: 'MIME Messenger API', version: '2.0.0' },
+    },
+    apis: ['./routes/*.js'],
+};
+const specs = swaggerJsdoc(options);
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(specs));
+
+// HTTP сервер
+const server = http.createServer(app);
+server.timeout = 10 * 60 * 1000; // 10 минут для загрузки больших файлов
 
 // Socket.IO
+const io = socketIo(server, {
+    cors: { origin: '*', methods: ['GET', 'POST'] }
+});
+
 io.on('connection', (socket) => {
+    console.log('New client connected');
     let currentUserId = null;
 
-    socket.on('user_online', (userId) => {
+    socket.on('user_online', async (userId) => {
         currentUserId = userId;
         socket.join(`user_${userId}`);
-        // Обновление статуса в БД (опционально)
-        console.log(`User ${userId} online`);
+        await User.findByIdAndUpdate(userId, { online: true, lastSeen: new Date() });
         io.emit('user_status', { userId, online: true });
     });
 
     socket.on('send_message', async (data) => {
-        const { from, to, text, type } = data;
-        if (!from || !to) return;
-        // Сохранение в БД (упрощённо, без моделей для краткости)
-        io.to(`user_${to}`).emit('new_message', { from, to, text, type, timestamp: Date.now() });
-        io.to(`user_${from}`).emit('new_message', { from, to, text, type, timestamp: Date.now() });
+        const { from, to, text, type = 'text' } = data;
+        if (!from || !to || !text) return;
+        const chat = await Chat.findOne({ participants: { $all: [from, to] }, type: 'private' });
+        if (!chat) return;
+        const message = new Message({ chatId: chat._id, from, text, type });
+        await message.save();
+        await Chat.findByIdAndUpdate(chat._id, { lastMessage: message._id, updatedAt: Date.now() });
+        io.to(`user_${to}`).emit('new_message', message);
+        io.to(`user_${from}`).emit('new_message', message);
     });
 
-    socket.on('send_voice', (data) => {
+    socket.on('send_voice', async (data) => {
         const { from, to, audioBase64, duration } = data;
-        io.to(`user_${to}`).emit('new_message', {
-            from, to, text: audioBase64, type: 'audio', duration, timestamp: Date.now()
-        });
+        const chat = await Chat.findOne({ participants: { $all: [from, to] }, type: 'private' });
+        if (!chat) return;
+        const message = new Message({ chatId: chat._id, from, text: audioBase64, type: 'audio', duration });
+        await message.save();
+        io.to(`user_${to}`).emit('new_message', message);
+        io.to(`user_${from}`).emit('new_message', message);
     });
 
-    socket.on('send_video_message', (data) => {
+    socket.on('send_video_message', async (data) => {
         const { from, to, videoBase64, duration } = data;
-        io.to(`user_${to}`).emit('new_message', {
-            from, to, text: videoBase64, type: 'video_message', duration, timestamp: Date.now()
-        });
+        const chat = await Chat.findOne({ participants: { $all: [from, to] }, type: 'private' });
+        if (!chat) return;
+        const message = new Message({ chatId: chat._id, from, text: videoBase64, type: 'video_message', duration });
+        await message.save();
+        io.to(`user_${to}`).emit('new_message', message);
+        io.to(`user_${from}`).emit('new_message', message);
     });
 
-    socket.on('send_video_file', (data) => {
+    socket.on('send_video_file', async (data) => {
         const { from, to, fileUrl, duration } = data;
-        io.to(`user_${to}`).emit('new_message', {
-            from, to, text: fileUrl, type: 'video', fileUrl, duration, timestamp: Date.now()
-        });
+        const chat = await Chat.findOne({ participants: { $all: [from, to] }, type: 'private' });
+        if (!chat) return;
+        const message = new Message({ chatId: chat._id, from, text: fileUrl, type: 'video', fileUrl, duration });
+        await message.save();
+        io.to(`user_${to}`).emit('new_message', message);
+        io.to(`user_${from}`).emit('new_message', message);
     });
 
     // WebRTC signaling
@@ -146,13 +182,32 @@ io.on('connection', (socket) => {
         socket.to(`user_${data.to}`).emit('call_ended');
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
         if (currentUserId) {
-            console.log(`User ${currentUserId} offline`);
+            await User.findByIdAndUpdate(currentUserId, { online: false, lastSeen: new Date() });
             io.emit('user_status', { userId: currentUserId, online: false });
         }
     });
 });
 
+// Загрузка файлов (Cloudinary)
+const upload = require('./middleware/upload');
+app.post('/upload/video', upload.single('video'), (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    res.json({ url: req.file.path, duration: req.file.duration || 0 });
+});
+
+// Обработка необработанных ошибок
+process.on('uncaughtException', (err) => {
+    console.error('❌ Uncaught Exception:', err);
+    process.exit(1);
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+    process.exit(1);
+});
+
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`MIME Messenger running on port ${PORT}`));
+server.listen(PORT, () => {
+    console.log(`🚀 MIME Messenger running on port ${PORT}`);
+});
