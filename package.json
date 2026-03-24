@@ -1,0 +1,17 @@
+{
+  "name": "mime-messenger",
+  "version": "1.0.0",
+  "description": "Telegram-like messenger with voice/video messages, calls, Google auth",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "express": "^4.18.2",
+    "express-session": "^1.17.3",
+    "passport": "^0.7.0",
+    "passport-google-oauth20": "^2.0.0",
+    "socket.io": "^4.7.2"
+  }
+}

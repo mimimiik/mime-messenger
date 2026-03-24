@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>MIME Messenger</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+</head>
+<body>
+    <div id="auth-container" class="auth-container">
+        <div class="auth-card">
+            <h2>MIME Messenger</h2>
+            <div class="tab-buttons">
+                <button id="login-tab" class="active">Вход</button>
+                <button id="register-tab">Регистрация</button>
+            </div>
+            <form id="login-form">
+                <input type="text" id="login-username" placeholder="Имя пользователя" required>
+                <input type="password" id="login-password" placeholder="Пароль" required>
+                <button type="submit">Войти</button>
+                <div class="error-message" id="login-error"></div>
+            </form>
+            <form id="register-form" style="display: none;">
+                <input type="text" id="reg-username" placeholder="Имя пользователя" required>
+                <input type="text" id="reg-displayname" placeholder="Отображаемое имя (необязательно)">
+                <input type="password" id="reg-password" placeholder="Пароль" required>
+                <button type="submit">Зарегистрироваться</button>
+                <div class="error-message" id="reg-error"></div>
+            </form>
+            <button id="google-login" style="background: #db4437; margin-top: 10px;">Войти через Google</button>
+        </div>
+    </div>
+
+    <div id="app" style="display: none;">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div class="user-info">
+                    <div class="avatar" id="current-avatar">👤</div>
+                    <div>
+                        <div id="current-username"></div>
+                        <div id="current-status" class="user-status"></div>
+                    </div>
+                </div>
+                <button id="edit-profile-btn" class="icon-btn">✏️</button>
+                <button id="logout-btn" class="icon-btn">🚪</button>
+            </div>
+            <div class="search-box">
+                <input type="text" id="search-users" placeholder="Поиск...">
+            </div>
+            <div id="chat-list" class="chat-list"></div>
+        </div>
+        <div class="chat-area">
+            <div class="chat-header" id="chat-header">
+                <div class="chat-header-info">
+                    <div class="chat-avatar" id="chat-avatar"></div>
+                    <div>
+                        <div id="chat-with-name"></div>
+                        <div id="chat-with-status" class="user-status"></div>
+                    </div>
+                </div>
+            </div>
+            <div id="messages-container" class="messages-container"></div>
+            <div class="message-input-area" id="message-input-area" style="display: none;">
+                <button id="voice-btn" class="media-btn" title="Голосовое сообщение (удерживать)">🎤</button>
+                <button id="video-msg-btn" class="media-btn" title="Видеосообщение (удерживать)">📹</button>
+                <button id="call-btn" class="media-btn" title="Видеозвонок">📞</button>
+                <input type="text" id="message-input" placeholder="Сообщение..." autocomplete="off">
+                <button id="send-btn">Отправить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно профиля -->
+    <div id="profile-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Редактировать профиль</h3>
+            <label>Отображаемое имя:</label>
+            <input type="text" id="edit-displayname">
+            <label>Статус:</label>
+            <input type="text" id="edit-status" placeholder="Статус">
+            <label>Аватар (URL):</label>
+            <input type="text" id="edit-avatar" placeholder="Ссылка на изображение">
+            <button id="save-profile">Сохранить</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно звонка -->
+    <div id="call-modal" class="modal">
+        <div class="modal-content call-modal-content">
+            <div class="video-container">
+                <video id="local-video" autoplay muted></video>
+                <video id="remote-video" autoplay></video>
+            </div>
+            <div class="call-controls">
+                <button id="end-call">Завершить</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="client.js"></script>
+</body>
+</html>
