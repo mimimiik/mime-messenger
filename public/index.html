@@ -10,25 +10,25 @@
 <body>
     <div id="auth-container" class="auth-container">
         <div class="auth-card">
-            <h2 data-i18n="app_name">MIME Messenger</h2>
+            <h2>MIME Messenger</h2>
             <div class="tab-buttons">
-                <button id="login-tab" class="active" data-i18n="login">Вход</button>
-                <button id="register-tab" data-i18n="register">Регистрация</button>
+                <button id="login-tab" class="active">Вход</button>
+                <button id="register-tab">Регистрация</button>
             </div>
             <form id="login-form">
-                <input type="text" id="login-username" placeholder="Username" data-i18n-placeholder="username" required>
-                <input type="password" id="login-password" placeholder="Password" data-i18n-placeholder="password" required>
-                <button type="submit" data-i18n="login">Войти</button>
+                <input type="text" id="login-username" placeholder="Имя пользователя" required>
+                <input type="password" id="login-password" placeholder="Пароль" required>
+                <button type="submit">Войти</button>
                 <div class="error-message" id="login-error"></div>
             </form>
             <form id="register-form" style="display: none;">
-                <input type="text" id="reg-username" placeholder="Username" data-i18n-placeholder="username" required>
-                <input type="text" id="reg-displayname" placeholder="Display name" data-i18n-placeholder="display_name">
-                <input type="password" id="reg-password" placeholder="Password" data-i18n-placeholder="password" required>
-                <button type="submit" data-i18n="register">Зарегистрироваться</button>
+                <input type="text" id="reg-username" placeholder="Имя пользователя" required>
+                <input type="text" id="reg-displayname" placeholder="Отображаемое имя">
+                <input type="password" id="reg-password" placeholder="Пароль" required>
+                <button type="submit">Зарегистрироваться</button>
                 <div class="error-message" id="reg-error"></div>
             </form>
-            <button id="google-login" class="google-btn" data-i18n="login_with_google">Войти через Google</button>
+            <button id="google-login" style="background: #db4437; margin-top: 10px;">Войти через Google</button>
         </div>
     </div>
 
@@ -42,15 +42,15 @@
                         <div id="current-status" class="user-status"></div>
                     </div>
                 </div>
-                <button id="edit-profile-btn" class="icon-btn" title="Edit profile">✏️</button>
-                <button id="logout-btn" class="icon-btn" title="Logout">🚪</button>
+                <button id="edit-profile-btn" class="icon-btn">✏️</button>
+                <button id="logout-btn" class="icon-btn">🚪</button>
             </div>
             <div class="search-box">
-                <input type="text" id="search-users" placeholder="Search..." data-i18n-placeholder="search">
+                <input type="text" id="search-users" placeholder="Поиск...">
             </div>
             <div class="chat-tabs">
-                <button id="chats-tab" class="active" data-i18n="chats">Чаты</button>
-                <button id="groups-tab" data-i18n="groups">Группы</button>
+                <button id="chats-tab" class="active">Чаты</button>
+                <button id="groups-tab">Группы</button>
             </div>
             <div id="chat-list" class="chat-list"></div>
         </div>
@@ -66,31 +66,32 @@
             </div>
             <div id="messages-container" class="messages-container"></div>
             <div class="message-input-area" id="message-input-area" style="display: none;">
-                <button id="voice-btn" class="media-btn" title="Voice message (hold)">🎤</button>
-                <button id="video-msg-btn" class="media-btn" title="Video message (hold)">📹</button>
-                <button id="call-btn" class="media-btn" title="Video call">📞</button>
-                <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off" data-i18n-placeholder="type_message">
-                <button id="send-btn" data-i18n="send">Отправить</button>
+                <button id="voice-btn" class="media-btn" title="Голосовое сообщение (удерживать)">🎤</button>
+                <button id="video-msg-btn" class="media-btn" title="Видеосообщение (удерживать)">📹</button>
+                <button id="call-btn" class="media-btn" title="Видеозвонок">📞</button>
+                <button id="attach-video-btn" class="media-btn" title="Прикрепить видео">📁</button>
+                <input type="file" id="video-file-input" accept="video/*" style="display: none;">
+                <input type="text" id="message-input" placeholder="Введите сообщение..." autocomplete="off">
+                <button id="send-btn">Отправить</button>
             </div>
         </div>
     </div>
 
-    <!-- Модальное окно профиля -->
+    <!-- Модальные окна -->
     <div id="profile-modal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span>
-            <h3 data-i18n="edit_profile">Редактировать профиль</h3>
-            <label data-i18n="display_name">Отображаемое имя:</label>
+            <h3>Редактировать профиль</h3>
+            <label>Отображаемое имя:</label>
             <input type="text" id="edit-displayname">
-            <label data-i18n="status">Статус:</label>
-            <input type="text" id="edit-status" placeholder="Status">
-            <label data-i18n="avatar_url">Аватар (URL):</label>
-            <input type="text" id="edit-avatar" placeholder="https://...">
-            <button id="save-profile" data-i18n="save">Сохранить</button>
+            <label>Статус:</label>
+            <input type="text" id="edit-status" placeholder="Статус">
+            <label>Аватар (URL):</label>
+            <input type="text" id="edit-avatar" placeholder="Ссылка на изображение">
+            <button id="save-profile">Сохранить</button>
         </div>
     </div>
 
-    <!-- Модальное окно звонка -->
     <div id="call-modal" class="modal">
         <div class="modal-content call-modal-content">
             <div class="video-container">
@@ -98,21 +99,20 @@
                 <video id="remote-video" autoplay></video>
             </div>
             <div class="call-controls">
-                <button id="end-call" data-i18n="end_call">Завершить</button>
+                <button id="end-call">Завершить</button>
             </div>
         </div>
     </div>
 
-    <!-- Модальное окно создания группы -->
     <div id="group-modal" class="modal">
         <div class="modal-content">
             <span class="close">&times;</span>
-            <h3 data-i18n="group_create">Создать группу</h3>
-            <label data-i18n="group_name">Название группы:</label>
+            <h3>Создать группу</h3>
+            <label>Название группы:</label>
             <input type="text" id="group-name">
-            <label data-i18n="add_members">Добавить участников:</label>
+            <label>Добавить участников:</label>
             <select id="group-members" multiple size="5"></select>
-            <button id="create-group" data-i18n="save">Создать</button>
+            <button id="create-group">Создать</button>
         </div>
     </div>
 
